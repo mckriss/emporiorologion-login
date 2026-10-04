@@ -1,6 +1,5 @@
 import os
 import sys
-import json
 from curl_cffi import requests
 
 EMPORIO_EMAIL = os.getenv("EMPORIO_EMAIL")
@@ -28,61 +27,28 @@ def test_login():
     }
 
     try:
-        # 1. Αρχικό GET στην αρχική σελίδα για ανάκτηση Cookies
-        print("[*] 1. Αίτημα στην αρχική σελίδα...")
-        res_get = session.get(f"{base_url}/", headers={'User-Agent': headers['User-Agent']})
-        print(f"    Cookies: {session.cookies.get_dict()}")
+        # 1. Αρχικό GET για cookies (PHPSESSID)
+        session.get(f"{base_url}/", headers={'User-Agent': headers['User-Agent']})
 
-        # 2. Δοκιμή Payloads με διαφορετικούς συνδυασμούς keys
-        payloads = [
-            # Συνδυασμός 1: email & password
-            {
-                'email': EMPORIO_EMAIL,
-                'password': EMPORIO_PASSWORD
-            },
-            # Συνδυασμός 2: username & password
-            {
-                'username': EMPORIO_EMAIL,
-                'password': EMPORIO_PASSWORD
-            },
-            # Συνδυασμός 3: login_username & login_password
-            {
-                'login_username': EMPORIO_EMAIL,
-                'login_password': EMPORIO_PASSWORD
-            },
-            # Συνδυασμός 4: Όλα τα keys μαζί
-            {
-                'email': EMPORIO_EMAIL,
-                'password': EMPORIO_PASSWORD,
-                'username': EMPORIO_EMAIL,
-                'login_username': EMPORIO_EMAIL,
-                'login_password': EMPORIO_PASSWORD
-            }
-        ]
+        # 2. Αποστολή POST με τα σωστά πεδία (username & password)
+        payload = {
+            'username': EMPORIO_EMAIL,
+            'password': EMPORIO_PASSWORD
+        }
 
-        for i, payload in enumerate(payloads, 1):
-            print(f"\n[*] 2.{i} Δοκιμή POST στο {login_url} (Payload {i})...")
-            res_post = session.post(login_url, data=payload, headers=headers)
-            print(f"    Status Code: {res_post.status_code}")
-            print(f"    Response: {res_post.text.strip()}")
-
-            # Αν η απάντηση δεν περιέχει accesso_negato ή επιστρέψει success/ok
-            if "accesso_negato" not in res_post.text.lower() and (res_post.status_code == 200 or res_post.status_code == 302):
-                print(f"    [+] Πιθανώς επιτυχές αίτημα με Payload {i}!")
-                
-                # Επαλήθευση session
-                res_check = session.get(f"{base_url}/index.php?route=account/account", headers={'Referer': f"{base_url}/"})
-                account_keywords = ["route=account/logout", "αποσύνδεση", "έξοδος", "my account", "ο λογαριασμός μου"]
-                if any(kw in res_check.text.lower() for kw in account_keywords):
-                    print("\n[SUCCESS] Το Login πέτυχε απόλυτα!")
-                    return True
-
-        print("\n[FAIL] Όλοι οι συνδυασμοί επέστρεψαν accesso_negato. Χρειάζεται έλεγχος του Payload από το Network tab.")
-        return False
+        res_post = session.post(login_url, data=payload, headers=headers)
+        
+        if res_post.status_code == 200 and "uid" in res_post.text:
+            data = res_post.json()
+            print(f"[SUCCESS] Επιτυχής σύνδεση! Χρήστης: {data.get('nome')} (UID: {data.get('uid')})")
+            return session
+        else:
+            print(f"[FAIL] Αποτυχία σύνδεσης: {res_post.text}")
+            return None
 
     except Exception as e:
         print(f"[!] Σφάλμα: {e}")
-        return False
+        return None
 
 if __name__ == "__main__":
     test_login()
