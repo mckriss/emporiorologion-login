@@ -1,6 +1,5 @@
 import os
 import sys
-import json
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 
@@ -12,69 +11,50 @@ def test_login():
         print("[!] ERROR: Δεν βρέθηκαν τα EMPORIO_EMAIL / EMPORIO_PASSWORD στα secrets.")
         sys.exit(1)
 
-    print(f"[*] Εκκίνηση δοκιμής Login για τον χρήστη: {EMPORIO_EMAIL}")
+    print(f"[*] Εκκίνηση Login για τον χρήστη: {EMPORIO_EMAIL}")
     
     session = requests.Session(impersonate="chrome120")
     base_url = "https://www.emporiorologion.gr"
+    login_url = f"{base_url}/gr/login"
 
-    # Strict Browser Headers για να εξομοιώσουμε το πάτημα του κουμπιού #form_login
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'el-GR,el;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
+        'Content-Type': 'application/x-www-form-urlencoded',
         'Origin': base_url,
         'Referer': f"{base_url}/",
     }
 
     try:
-        # 1. Αρχικό GET για να πάρουμε το PHPSESSID cookie
-        print("[*] 1. Αίτημα στην αρχική σελίδα για cookies...")
-        res_get = session.get(f"{base_url}/")
-        print(f"    Initial Cookies: {session.cookies.get_dict()}")
+        # 1. Αρχικό GET στην αρχική σελίδα για ανάκτηση Cookies
+        print("[*] 1. Αίτημα στην αρχική σελίδα...")
+        res_get = session.get(f"{base_url}/", headers=headers)
+        print(f"    Status: {res_get.status_code}")
+        print(f"    Cookies: {session.cookies.get_dict()}")
 
-        # Payload με τα ακριβή IDs/Names της φόρμας σου
+        # 2. Αποστολή POST στο σωστό endpoint (/gr/login)
         payload = {
             'login_username': EMPORIO_EMAIL,
             'login_password': EMPORIO_PASSWORD,
-            'username': EMPORIO_EMAIL,
-            'password': EMPORIO_PASSWORD,
-            'email': EMPORIO_EMAIL
         }
 
-        # 2. Δοκιμή στο 1ο πιθανό AJAX endpoint
-        endpoint_1 = f"{base_url}/index.php?route=account/login/login"
-        print(f"\n[*] 2. Αποστολή AJAX POST στο {endpoint_1}...")
-        res_post1 = session.post(endpoint_1, data=payload, headers=headers)
-        print(f"    Status: {res_post1.status_code}")
-        print(f"    Response: {res_post1.text[:200]}")
+        print(f"\n[*] 2. Αποστολή POST στο {login_url}...")
+        res_post = session.post(login_url, data=payload, headers=headers, allow_redirects=True)
+        print(f"    Status Code: {res_post.status_code}")
+        print(f"    Final URL: {res_post.url}")
 
-        # 3. Επαλήθευση αν άνοιξε το Session
-        check_headers = {
-            'User-Agent': headers['User-Agent'],
-            'Referer': f"{base_url}/"
-        }
-        res_check = session.get(f"{base_url}/index.php?route=account/account", headers=check_headers)
+        # 3. Έλεγχος αν δημιουργήθηκε authenticated session
+        print("\n[*] 3. Επαλήθευση Session...")
+        res_check = session.get(f"{base_url}/index.php?route=account/account", headers={'Referer': f"{base_url}/"})
         
-        if any(term in res_check.text.lower() for term in ["route=account/logout", "αποσύνδεση", "εξόδος", "my account"]):
+        account_keywords = ["route=account/logout", "αποσύνδεση", "έξοδος", "my account", "ο λογαριασμός μου"]
+        if any(kw in res_check.text.lower() for kw in account_keywords):
             print("\n[SUCCESS] Το Login πέτυχε απόλυτα!")
             return True
-
-        # 4. Αν απέτυχε, δοκιμή στο 2ο πιθανό endpoint (Module Login)
-        endpoint_2 = f"{base_url}/index.php?route=module/account/login"
-        print(f"\n[*] 3. Δοκιμή στο εναλλακτικό endpoint: {endpoint_2}...")
-        res_post2 = session.post(endpoint_2, data=payload, headers=headers)
-        print(f"    Status: {res_post2.status_code}")
-        print(f"    Response: {res_post2.text[:200]}")
-
-        # Τελικός έλεγχος
-        res_check_final = session.get(f"{base_url}/index.php?route=account/account", headers=check_headers)
-        if any(term in res_check_final.text.lower() for term in ["route=account/logout", "αποσύνδεση", "εξόδος", "my account"]):
-            print("\n[SUCCESS] Το Login πέτυχε απόλυτα στο 2ο endpoint!")
-            return True
         else:
-            print("\n[FAIL] Απέτυχε η σύνδεση. Ο server δεν κράτησε το Session.")
+            print("\n[FAIL] Το Login απέτυχε. Ελέγξτε αν τα πεδία χρειάζονται διαφορετικά keys (π.χ. email/password).")
+            print(f"    Preview σελίδας μετά το login: {res_post.text[:200].strip()}")
             return False
 
     except Exception as e:
