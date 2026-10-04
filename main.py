@@ -24,7 +24,7 @@ def test_login():
         'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
         'X-Requested-With': 'XMLHttpRequest',
         'Origin': base_url,
-        'Referer': f"{base_url}/",
+        'Referer': f"{base_url}/gr/login",
     }
 
     try:
@@ -35,23 +35,28 @@ def test_login():
 
         # 2. Δοκιμή Payloads με διαφορετικούς συνδυασμούς keys
         payloads = [
-            # Συνδυασμός 1: Όλα τα πιθανά keys μαζί
+            # Συνδυασμός 1: email & password
+            {
+                'email': EMPORIO_EMAIL,
+                'password': EMPORIO_PASSWORD
+            },
+            # Συνδυασμός 2: username & password
+            {
+                'username': EMPORIO_EMAIL,
+                'password': EMPORIO_PASSWORD
+            },
+            # Συνδυασμός 3: login_username & login_password
+            {
+                'login_username': EMPORIO_EMAIL,
+                'login_password': EMPORIO_PASSWORD
+            },
+            # Συνδυασμός 4: Όλα τα keys μαζί
             {
                 'email': EMPORIO_EMAIL,
                 'password': EMPORIO_PASSWORD,
                 'username': EMPORIO_EMAIL,
                 'login_username': EMPORIO_EMAIL,
                 'login_password': EMPORIO_PASSWORD
-            },
-            # Συνδυασμός 2: Καθαρό email & password
-            {
-                'email': EMPORIO_EMAIL,
-                'password': EMPORIO_PASSWORD
-            },
-            # Συνδυασμός 3: Καθαρό username & password
-            {
-                'username': EMPORIO_EMAIL,
-                'password': EMPORIO_PASSWORD
             }
         ]
 
@@ -61,9 +66,23 @@ def test_login():
             print(f"    Status Code: {res_post.status_code}")
             print(f"    Response: {res_post.text.strip()}")
 
-            # Αν η απάντηση περιέχει success ή redirection
-            if "success" in res_post.text.lower() or "ok" in res_post.text.lower() or res_post.status_code == 302:
-                print(f"    [+] ΕπιΤο πρόβλημα βρίσκεται στην απόκριση που λαμβάνεις από τον server:
+            # Αν η απάντηση δεν περιέχει accesso_negato ή επιστρέψει success/ok
+            if "accesso_negato" not in res_post.text.lower() and (res_post.status_code == 200 or res_post.status_code == 302):
+                print(f"    [+] Πιθανώς επιτυχές αίτημα με Payload {i}!")
+                
+                # Επαλήθευση session
+                res_check = session.get(f"{base_url}/index.php?route=account/account", headers={'Referer': f"{base_url}/"})
+                account_keywords = ["route=account/logout", "αποσύνδεση", "έξοδος", "my account", "ο λογαριασμός μου"]
+                if any(kw in res_check.text.lower() for kw in account_keywords):
+                    print("\n[SUCCESS] Το Login πέτυχε απόλυτα!")
+                    return True
 
-```json
-{"msg":"accesso_negato"}
+        print("\n[FAIL] Όλοι οι συνδυασμοί επέστρεψαν accesso_negato. Χρειάζεται έλεγχος του Payload από το Network tab.")
+        return False
+
+    except Exception as e:
+        print(f"[!] Σφάλμα: {e}")
+        return False
+
+if __name__ == "__main__":
+    test_login()
