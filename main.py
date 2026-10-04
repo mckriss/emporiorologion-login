@@ -1,6 +1,6 @@
 import os
 import sys
-from bs4 import BeautifulSoup
+import json
 from curl_cffi import requests
 
 EMPORIO_EMAIL = os.getenv("EMPORIO_EMAIL")
@@ -19,9 +19,10 @@ def test_login():
 
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
         'Accept-Language': 'el-GR,el;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Content-Type': 'application/x-www-form-urlencoded',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
         'Origin': base_url,
         'Referer': f"{base_url}/",
     }
@@ -29,37 +30,40 @@ def test_login():
     try:
         # 1. Αρχικό GET στην αρχική σελίδα για ανάκτηση Cookies
         print("[*] 1. Αίτημα στην αρχική σελίδα...")
-        res_get = session.get(f"{base_url}/", headers=headers)
-        print(f"    Status: {res_get.status_code}")
+        res_get = session.get(f"{base_url}/", headers={'User-Agent': headers['User-Agent']})
         print(f"    Cookies: {session.cookies.get_dict()}")
 
-        # 2. Αποστολή POST στο σωστό endpoint (/gr/login)
-        payload = {
-            'login_username': EMPORIO_EMAIL,
-            'login_password': EMPORIO_PASSWORD,
-        }
+        # 2. Δοκιμή Payloads με διαφορετικούς συνδυασμούς keys
+        payloads = [
+            # Συνδυασμός 1: Όλα τα πιθανά keys μαζί
+            {
+                'email': EMPORIO_EMAIL,
+                'password': EMPORIO_PASSWORD,
+                'username': EMPORIO_EMAIL,
+                'login_username': EMPORIO_EMAIL,
+                'login_password': EMPORIO_PASSWORD
+            },
+            # Συνδυασμός 2: Καθαρό email & password
+            {
+                'email': EMPORIO_EMAIL,
+                'password': EMPORIO_PASSWORD
+            },
+            # Συνδυασμός 3: Καθαρό username & password
+            {
+                'username': EMPORIO_EMAIL,
+                'password': EMPORIO_PASSWORD
+            }
+        ]
 
-        print(f"\n[*] 2. Αποστολή POST στο {login_url}...")
-        res_post = session.post(login_url, data=payload, headers=headers, allow_redirects=True)
-        print(f"    Status Code: {res_post.status_code}")
-        print(f"    Final URL: {res_post.url}")
+        for i, payload in enumerate(payloads, 1):
+            print(f"\n[*] 2.{i} Δοκιμή POST στο {login_url} (Payload {i})...")
+            res_post = session.post(login_url, data=payload, headers=headers)
+            print(f"    Status Code: {res_post.status_code}")
+            print(f"    Response: {res_post.text.strip()}")
 
-        # 3. Έλεγχος αν δημιουργήθηκε authenticated session
-        print("\n[*] 3. Επαλήθευση Session...")
-        res_check = session.get(f"{base_url}/index.php?route=account/account", headers={'Referer': f"{base_url}/"})
-        
-        account_keywords = ["route=account/logout", "αποσύνδεση", "έξοδος", "my account", "ο λογαριασμός μου"]
-        if any(kw in res_check.text.lower() for kw in account_keywords):
-            print("\n[SUCCESS] Το Login πέτυχε απόλυτα!")
-            return True
-        else:
-            print("\n[FAIL] Το Login απέτυχε. Ελέγξτε αν τα πεδία χρειάζονται διαφορετικά keys (π.χ. email/password).")
-            print(f"    Preview σελίδας μετά το login: {res_post.text[:200].strip()}")
-            return False
+            # Αν η απάντηση περιέχει success ή redirection
+            if "success" in res_post.text.lower() or "ok" in res_post.text.lower() or res_post.status_code == 302:
+                print(f"    [+] ΕπιΤο πρόβλημα βρίσκεται στην απόκριση που λαμβάνεις από τον server:
 
-    except Exception as e:
-        print(f"[!] Σφάλμα: {e}")
-        return False
-
-if __name__ == "__main__":
-    test_login()
+```json
+{"msg":"accesso_negato"}
